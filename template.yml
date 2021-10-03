@@ -1,0 +1,115 @@
+AWSTemplateFormatVersion : "2010-09-09"
+Resources : 
+  loadcsvfunction : 
+    Type : AWS::Lambda::Function
+    DeletionPolicy : Retain
+    Properties : 
+      FunctionName : loadcsvfunction
+      Handler : lambda_function.lambda_handler
+      Runtime : python3.7
+      Code :
+        ZipFile : |
+          import csv
+          import io
+          import requests
+          import boto3
+          import json
+          import urllib3
+          import itertools
+          import logging
+          import os
+
+          def lambda_handler(event, context): 
+              url1 = "https://raw.githubusercontent.com/nytimes/covid-19-data/master/us.csv"
+              url2 = "https://raw.githubusercontent.com/datasets/covid-19/master/data/time-series-19-covid-combined.csv"
+              sns = boto3.client('sns')
+              region = 'eu-west-2'
+              dyndb = boto3.client('dynamodb', region_name=region)
+              
+              try:
+                  with requests.Session() as s:
+                      download = s.get(url1)
+                      download2 = s.get(url2)
+                      decoded_content = download.content.decode('utf-8')
+                      decoded_content2 = download2.content.decode('utf-8')
+                  
+                      cr = csv.reader(decoded_content.splitlines(), delimiter=',')
+                      my_list = list(cr)
+                      cr2 = csv.reader(decoded_content2.splitlines(), delimiter=',')
+                      my_list2 = list(cr2)
+                      date = []
+                      cases = []
+                      deaths = []
+                      Recovered = []
+                      data = iter(my_list)
+                      data2 = iter(my_list2)
+                      next(data)
+                      next(data)
+                      for row in data:
+                          date.append(row[0])
+                          cases.append(row[1])
+                          deaths.append(row[2])
+                      
+                      for row in data2:
+                          country = row[1]
+                          if country == 'US':
+                              Recovered.append(row[4])
+              
+              
+                  s.keep_alive = False
+                  for a, b, c, d in zip(date, cases, deaths, Recovered):
+                      dyndb.put_item(TableName='covidstatstable',
+                          Item={
+                          'date': {'S': a},
+                          'cases': {'N': b},
+                          'deaths': {'N': c},
+                          'recoveries': {'N': d},
+                          })
+                          
+                  print('Put succeeded:')
+                  sns.publish(
+                      TopicArn = 'arn:aws:sns:eu-west-2:310273632851:LambdaError',
+                      Subject = 'Your database covidstatstable has been udpated',
+                      Message = 'One new row has been added to covidstatstable')
+              except:
+                  sns.publish(
+                      TopicArn = 'arn:aws:sns:eu-west-2:310273632851:LambdaError',
+                      Subject = 'Failed to upload data to database',
+                      Message = 'Failed to upload data to: covidstatstable. The data likely contains unexpected or malformed input'
+                      )
+      Role: arn:aws:iam::310273632851:role/s3-full-access
+  LambdaError : 
+    Type: AWS::SNS::Topic
+    DeletionPolicy : Retain
+    # Properties: 
+    #   ContentBasedDeduplication : False
+  awslambdadynamodbtrigger :
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy : Retain
+  awslambdaSnsUpdate :
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy : Retain
+  awslambdaloadcsvfunction :
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy : Retain
+  covidstatstable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy : Retain
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "date"
+          AttributeType: "S"
+        - AttributeName: "cases"
+          AttributeType: "N"
+        # - AttributeName: "deaths"
+        #   AttributeType: "N"
+        # - AttributeName: "recoveries"
+        #   AttributeType: "N"
+      KeySchema:
+        - AttributeName: "date"
+          KeyType: "HASH"
+        - AttributeName: "cases"
+          KeyType: "RANGE"
+      ProvisionedThroughput: 
+        ReadCapacityUnits: 10
+        WriteCapacityUnits: 10

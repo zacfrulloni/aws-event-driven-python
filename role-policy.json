@@ -1,0 +1,38 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+      {
+          "Effect": "Allow",
+          "Action": "lambda:InvokeFunction",
+          "Resource": "arn:aws:lambda:eu-west-2:310273632851:function:publishNewBark*"
+      },
+      {
+          "Effect": "Allow",
+          "Action": [
+              "logs:CreateLogGroup",
+              "logs:CreateLogStream",
+              "logs:PutLogEvents"
+          ],
+          "Resource": "arn:aws:logs:eu-west-2:310273632851:*"
+      },
+      {
+          "Effect": "Allow",
+          "Action": [
+              "dynamodb:DescribeStream",
+              "dynamodb:GetRecords",
+              "dynamodb:GetShardIterator",
+              "dynamodb:ListStreams"
+          ],
+          "Resource": "arn:aws:dynamodb:eu-west-2:310273632851:table/covidstats/stream/*"
+      },
+      {
+          "Effect": "Allow",
+          "Action": [
+              "sns:Publish"
+          ],
+          "Resource": [
+              "*"
+          ]
+      }
+  ]
+}
